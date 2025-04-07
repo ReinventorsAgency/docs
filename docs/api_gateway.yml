@@ -329,6 +329,8 @@ paths:
   
   /reinventors/create-timesheet/v1:
     post:
+      tags:
+        - "Reinventors"
       summary: "Create Timesheet"
       operationId: "reinventorsCreateTimesheetV1"
       description: "Generates a timesheet PDF based on provided data, rendered using a Pug template and styled with CSS. The endpoint accepts a JSON object containing project details, period, tasks, and optional configuration (e.g., week vs. month view, link generation). It uses Puppeteer to convert the rendered HTML into a printable A4 PDF, incorporating a logo, task tables (separating major and minor tasks), and totals. The task tables include task names (with optional hyperlinks) and hours, with minor tasks (< 2 hours) consolidated into a single row. The response is a binary PDF file served as an attachment named 'timesheet.pdf'."
