@@ -1,0 +1,1920 @@
+swagger: "2.0"
+info:
+  title: "Reinventors API Gateway"
+  description: "Centralized API for managing client functions with versioning"
+  version: "1.0.0"
+host: "api.reinventors.dev"
+schemes:
+  - "https"
+basePath: "/"
+securityDefinitions:
+  api_key:
+    type: "apiKey"
+    name: "x-api-key"
+    in: "header"
+security:
+  - api_key: []
+paths:
+  /reinventors/change-schema/v1:
+    post:
+      tags:
+        - "Reinventors"
+      summary: "Change Schema"
+      operationId: "reinventorsChangeSchemaV1"
+      description: "Transforms input JSON data into a structured output containing lines and fields. The endpoint accepts a JSON object where values can be either simple key-value pairs or arrays of objects. Simple key-value pairs are converted into field entries, while arrays are transformed into line entries with associated fields. Each array item generates a line with a unique ID, and its key-value pairs are flattened into both a concatenated string for the line and individual field entries linked to the line by ID."
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "The input JSON data to be transformed. Can contain simple key-value pairs (e.g., {'name': 'John'}) and/or arrays of objects (e.g., {'items': [{'id': 1, 'desc': 'test'}]}). Arrays are treated as lines, and their nested objects are broken down into fields."
+          required: true
+          schema:
+            type: "object"
+            additionalProperties: true
+            example:
+              name: "John Doe"
+              items:
+                - id: 1
+                  desc: "First item"
+                - id: 2
+                  desc: "Second item"
+      responses:
+        "200":
+          description: "Successfully transformed input data into a structured output with lines and fields. The response contains two arrays: 'lines' for array-based data and 'fields' for all key-value pairs, with line-linked fields including a line_id."
+          schema:
+            type: "object"
+            properties:
+              lines:
+                type: "array"
+                description: "Array of line objects derived from input arrays. Each line represents an item in an array from the input, with a unique ID and concatenated fields."
+                items:
+                  type: "object"
+                  properties:
+                    line_id:
+                      type: "integer"
+                      description: "Unique identifier for the line, starting from 1 and incrementing for each item in the array."
+                    line_name:
+                      type: "string"
+                      description: "The key from the input JSON that contained the array (e.g., 'items')."
+                    line_fields:
+                      type: "string"
+                      description: "A concatenated string of all key-value pairs in the array item, formatted as 'key: 'value', ...'."
+                  required:
+                    - "line_id"
+                    - "line_name"
+                    - "line_fields"
+              fields:
+                type: "array"
+                description: "Array of field objects representing all key-value pairs from the input. Fields from simple key-value pairs have no line_id, while fields from array items include a line_id linking them to a line."
+                items:
+                  type: "object"
+                  properties:
+                    field_name:
+                      type: "string"
+                      description: "The key from the input JSON (e.g., 'name' or 'id')."
+                    field_value:
+                      type: "string"
+                      description: "The value associated with the field_name, converted to a string."
+                    line_id:
+                      type: "integer"
+                      description: "The ID of the line this field belongs to, if it originates from an array item. Omitted for fields from simple key-value pairs."
+                  required:
+                    - "field_name"
+                    - "field_value"
+            required:
+              - "lines"
+              - "fields"
+            example:
+              lines:
+                - line_id: 1
+                  line_name: "items"
+                  line_fields: "id: '1', desc: 'First item'"
+                - line_id: 2
+                  line_name: "items"
+                  line_fields: "id: '2', desc: 'Second item'"
+              fields:
+                - field_name: "name"
+                  field_value: "John Doe"
+                - field_name: "id"
+                  field_value: "1"
+                  line_id: 1
+                - field_name: "desc"
+                  field_value: "First item"
+                  line_id: 1
+                - field_name: "id"
+                  field_value: "2"
+                  line_id: 2
+                - field_name: "desc"
+                  field_value: "Second item"
+                  line_id: 2
+        "400":
+          description: "Bad request, likely due to invalid JSON input."
+          schema:
+            type: "string"
+      x-google-backend:
+        address: "https://change-schema-1156202023.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+  /reinventors/company-profiler/v1:
+    post:
+      tags:
+        - "Reinventors"
+      summary: "Company Profiler"
+      operationId: "reinventorsCompanyProfilerV1"
+      description: "Profiles a company by scraping its website and relevant links using Puppeteer, then analyzes the content with OpenAI to extract structured company information. The endpoint accepts a URL or email address as input, extracts links from the homepage, categorizes them into product description and sales channel links using a customizable schema, scrapes additional content from those links, and returns a detailed analysis. The analysis includes company details (name, domain, location, etc.) and the scraped content from categorized links. Default schemas for link extraction and final analysis can be overridden via the request body."
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Input data for company profiling, including the URL or email to scrape and optional schemas for link extraction and final analysis."
+          required: true
+          schema:
+            type: "object"
+            properties:
+              input:
+                type: "string"
+                description: "The URL of the company's website (e.g., 'https://example.com') or an email address (e.g., 'contact@example.com') from which the domain will be extracted and converted to a URL."
+              link_schema:
+                type: "object"
+                description: "Optional schema for OpenAI to categorize links from the homepage. If omitted, a default schema is used to extract 'product_description_links' and 'sales_channels_links'."
+                properties:
+                  type:
+                    type: "string"
+                    enum: ["json_schema"]
+                  name:
+                    type: "string"
+                  description:
+                    type: "string"
+                  schema:
+                    type: "object"
+                    additionalProperties: true
+                  strict:
+                    type: "boolean"
+                default:
+                  type: "json_schema"
+                  name: "extract_relevant_links"
+                  description: "Extract links that are relevant to the products, services, and sales channels of the company."
+                  schema:
+                    type: "object"
+                    properties:
+                      product_description_links:
+                        type: "array"
+                        items:
+                          type: "string"
+                      sales_channels_links:
+                        type: "array"
+                        items:
+                          type: "string"
+                    required: ["product_description_links", "sales_channels_links"]
+                    additionalProperties: false
+                  strict: true
+              final_analysis_schema:
+                type: "object"
+                description: "Optional schema for OpenAI to structure the final company analysis. If omitted, a default schema is used to extract specific company details as plain text."
+                properties:
+                  type:
+                    type: "string"
+                    enum: ["json_schema"]
+                  name:
+                    type: "string"
+                  description:
+                    type: "string"
+                  schema:
+                    type: "object"
+                    additionalProperties: true
+                  strict:
+                    type: "boolean"
+                default:
+                  type: "json_schema"
+                  name: "conduct_final_analysis"
+                  description: "Extract the relevant text describing the company. Do not summarize — extract the relevant pieces of text as they appear in the input material. Do not format the output, keep it as plain text."
+                  schema:
+                    type: "object"
+                    properties:
+                      name:
+                        type: "string"
+                      domain:
+                        type: "string"
+                      location:
+                        type: "string"
+                      industry:
+                        type: "string"
+                      business_description:
+                        type: "string"
+                      products_description:
+                        type: "string"
+                      sales_channels:
+                        type: "string"
+                    required: ["name", "domain", "location", "industry", "business_description", "products_description", "sales_channels"]
+                    additionalProperties: false
+                  strict: true
+            required:
+              - "input"
+            example:
+              input: "https://example.com"
+              link_schema:
+                type: "json_schema"
+                name: "custom_link_extraction"
+                description: "Custom link extraction schema"
+                schema:
+                  type: "object"
+                  properties:
+                    product_links:
+                      type: "array"
+                      items:
+                        type: "string"
+                  required: ["product_links"]
+                  additionalProperties: false
+                strict: true
+      responses:
+        "200":
+          description: "Successfully profiled the company, returning structured data including company details and scraped content from relevant links."
+          schema:
+            type: "object"
+            properties:
+              name:
+                type: "string"
+                description: "The name of the company as extracted from the website content."
+              domain:
+                type: "string"
+                description: "The domain of the company, derived from the input URL or email."
+              location:
+                type: "string"
+                description: "The location of the company as extracted from the website content."
+              industry:
+                type: "string"
+                description: "The industry of the company as extracted from the website content."
+              business_description:
+                type: "string"
+                description: "The business description of the company as extracted from the website content."
+              products_description:
+                type: "string"
+                description: "The products description of the company as extracted from the website content."
+              sales_channels:
+                type: "string"
+                description: "The sales channels of the company as extracted from the website content."
+              product_description_links:
+                type: "array"
+                description: "Array of objects containing links related to product descriptions and their scraped content."
+                items:
+                  type: "object"
+                  properties:
+                    link:
+                      type: "string"
+                      description: "The URL of the product description page."
+                    content:
+                      type: "string"
+                      description: "The raw text content scraped from the product description page."
+                  required:
+                    - "link"
+                    - "content"
+              sales_channels_links:
+                type: "array"
+                description: "Array of objects containing links related to sales channels and their scraped content."
+                items:
+                  type: "object"
+                  properties:
+                    link:
+                      type: "string"
+                      description: "The URL of the sales channel page."
+                    content:
+                      type: "string"
+                      description: "The raw text content scraped from the sales channel page."
+                  required:
+                    - "link"
+                    - "content"
+            required:
+              - "name"
+              - "domain"
+              - "location"
+              - "industry"
+              - "business_description"
+              - "products_description"
+              - "sales_channels"
+              - "product_description_links"
+              - "sales_channels_links"
+            example:
+              name: "Example Corp"
+              domain: "example.com"
+              location: "New York, NY"
+              industry: "Technology"
+              business_description: "Example Corp provides innovative tech solutions."
+              products_description: "Our flagship product is a cloud-based platform."
+              sales_channels: "Available online and through select partners."
+              product_description_links:
+                - link: "https://example.com/products"
+                  content: "Our products include a cloud platform and mobile apps."
+              sales_channels_links:
+                - link: "https://example.com/store"
+                  content: "Purchase directly from our online store."
+        "400":
+          description: "Bad request, likely due to invalid JSON input or malformed URL/email."
+          schema:
+            type: "string"
+        "500":
+          description: "Internal server error, possibly due to issues with Puppeteer, OpenAI, or network timeouts."
+          schema:
+            type: "string"
+      x-google-backend:
+        address: "https://company-profiler-1156202023.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+  /reinventors/create-timesheet/v1:
+    post:
+      summary: "Create Timesheet"
+      operationId: "reinventorsCreateTimesheetV1"
+      description: "Generates a timesheet PDF based on provided data, rendered using a Pug template and styled with CSS. The endpoint accepts a JSON object containing project details, period, tasks, and optional configuration (e.g., week vs. month view, link generation). It uses Puppeteer to convert the rendered HTML into a printable A4 PDF, incorporating a logo, task tables (separating major and minor tasks), and totals. The task tables include task names (with optional hyperlinks) and hours, with minor tasks (< 2 hours) consolidated into a single row. The response is a binary PDF file served as an attachment named 'timesheet.pdf'."
+      consumes:
+        - "application/json"
+      produces:
+        - "application/pdf"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Input data for generating the timesheet, including project details, period, tasks, and optional settings."
+          required: true
+          schema:
+            type: "object"
+            properties:
+              project:
+                type: "string"
+                description: "The name of the project for which the timesheet is generated."
+              period:
+                type: "string"
+                description: "The time period covered by the timesheet (e.g., 'March 1 - March 31, 2025')."
+              date:
+                type: "string"
+                description: "The date the timesheet was created (e.g., 'April 7, 2025')."
+              monthName:
+                type: "string"
+                description: "The name of the month for total accumulated hours (e.g., 'March')."
+              type:
+                type: "string"
+                enum: ["week", "month"]
+                description: "Determines the timesheet type: 'week' includes weekly tasks, 'month' omits them."
+                default: "month"
+              createLinks:
+                type: "boolean"
+                description: "If true, task names with a numeric prefix (e.g., '1. Task Name') are converted to hyperlinks pointing to 'https://my.reinventors.dev/task/stories-{number}'. Ignored if false or omitted."
+                default: false
+              week:
+                type: "object"
+                description: "Weekly task data, required if type is 'week'."
+                properties:
+                  tasks:
+                    type: "array"
+                    description: "List of tasks completed during the week."
+                    items:
+                      type: "object"
+                      properties:
+                        name:
+                          type: "string"
+                          description: "Task name, optionally starting with a number (e.g., '1. Design UI')."
+                        hours:
+                          type: "number"
+                          description: "Hours spent on the task."
+                      required:
+                        - "name"
+                        - "hours"
+                required:
+                  - "tasks"
+              month:
+                type: "object"
+                description: "Monthly task data for total accumulated hours."
+                properties:
+                  tasks:
+                    type: "array"
+                    description: "List of tasks for the month."
+                    items:
+                      type: "object"
+                      properties:
+                        name:
+                          type: "string"
+                          description: "Task name, optionally starting with a number (e.g., '1. Design UI')."
+                        hours:
+                          type: "number"
+                          description: "Hours spent on the task."
+                      required:
+                        - "name"
+                        - "hours"
+                required:
+                  - "tasks"
+            required:
+              - "project"
+              - "period"
+              - "date"
+              - "monthName"
+              - "month"
+            example:
+              project: "Project Alpha"
+              period: "March 1 - March 7, 2025"
+              date: "April 7, 2025"
+              monthName: "March"
+              type: "week"
+              createLinks: true
+              week:
+                tasks:
+                  - name: "1. Design UI"
+                    hours: 5.5
+                  - name: "2. Code Backend"
+                    hours: 3.0
+                  - name: "Fix Bug"
+                    hours: 1.5
+              month:
+                tasks:
+                  - name: "1. Design UI"
+                    hours: 20.0
+                  - name: "2. Code Backend"
+                    hours: 15.0
+                  - name: "Fix Bug"
+                    hours: 1.5
+      responses:
+        "200":
+          description: "Successfully generated and returned the timesheet as a PDF file. The PDF includes a logo, project details, period, task tables (weekly if type is 'week', monthly always), and totals. Task tables separate major tasks (>= 2 hours) and consolidate minor tasks (< 2 hours) into a single row."
+          schema:
+            type: "file"
+            description: "Binary PDF content of the timesheet."
+          headers:
+            Content-Type:
+              type: "string"
+              description: "MIME type of the response."
+              default: "application/pdf"
+            Content-Disposition:
+              type: "string"
+              description: "Instructs the client to download the file as 'timesheet.pdf'."
+              default: "attachment; filename=\"timesheet.pdf\""
+        "400":
+          description: "Bad request, typically due to missing or invalid input data."
+          schema:
+            type: "string"
+            example: "Missing request data"
+        "500":
+          description: "Internal server error, possibly due to issues with Pymic rendering, CSS loading, or PDF generation."
+          schema:
+            type: "string"
+            example: "An error occurred while generating the PDF"
+      x-google-backend:
+        address: "https://create-timesheet-1156202023.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+  
+  /reinventors/ocr/v1:
+    post:
+      tags:
+        - "Reinventors"
+      summary: "OCR"
+      operationId: "reinventorsOcrV1"
+      description: "Performs Optical Character Recognition (OCR) on an uploaded file using Google Cloud Document AI. The endpoint accepts a single file (image or PDF) via multipart/form-data. Images are converted to JPEG if necessary, while PDFs are split into chunks of up to 15 pages for processing. Each chunk or image is processed individually by Document AI, and the extracted text from all chunks is merged into a single string, returned as a JSON response with a 'text' key. Supported file types include common image formats (e.g., PNG, JPEG, HEIF) and PDFs."
+      consumes:
+        - "multipart/form-data"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "formData"
+          name: "file"
+          type: "file"
+          description: "The file to process with OCR. Can be an image (e.g., PNG, JPEG, HEIF) or a PDF. Images are converted to JPEG if not already in RGB or grayscale mode. PDFs are split into chunks of 15 pages or fewer for processing."
+          required: true
+      responses:
+        "200":
+          description: "Successfully processed the file and extracted text using OCR. Returns a JSON object containing the merged text from all processed chunks or the single image."
+          schema:
+            type: "object"
+            properties:
+              text:
+                type: "string"
+                description: "The extracted text from the file. For PDFs, this is the concatenation of text from all chunks, joined by spaces. For images, it is the text extracted from the single image."
+            required:
+              - "text"
+            example:
+              text: "Invoice #123\nDate: 2025-04-07\nItem: Widget\nPrice: $50.00"
+        "400":
+          description: "Bad request, typically due to missing file in the request."
+          schema:
+            type: "string"
+            example: "No file part"
+        "500":
+          description: "Internal server error, possibly due to issues with file processing, PDF splitting, or Document AI service failure."
+          schema:
+            type: "string"
+            example: "Error processing document"
+      x-google-backend:
+        address: "https://ocr-1156202023.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+  /reinventors/scrape-page/v1:
+    post:
+      tags:
+        - "Reinventors"
+      summary: "Scrape Page"
+      operationId: "reinventorsScrapePageV1"
+      description: "Scrapes text content from a specified webpage using Puppeteer. The endpoint accepts a URL either as a query parameter or in the request body, navigates to the page, removes script and style elements, and extracts text content while preserving hyperlinks as HTML `<a>` tags. Text is recursively extracted from all DOM nodes, with non-text elements (except links) ignored, and the result is returned as a JSON object with a 'content' key. The process waits for the page to fully load (network idle) with a 30-second timeout."
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "query"
+          name: "url"
+          type: "string"
+          description: "The URL of the webpage to scrape (e.g., 'https://example.com'). Overrides the 'url' in the request body if both are provided."
+          required: false
+        - in: "body"
+          name: "body"
+          description: "Optional JSON body containing the URL to scrape. Used if the query parameter 'url' is not provided."
+          required: false
+          schema:
+            type: "object"
+            properties:
+              url:
+                type: "string"
+                description: "The URL of the webpage to scrape (e.g., 'https://example.com')."
+            example:
+              url: "https://example.com"
+      responses:
+        "200":
+          description: "Successfully scraped the webpage and extracted text content. Returns a JSON object with the extracted text, including preserved hyperlinks as HTML `<a>` tags."
+          schema:
+            type: "object"
+            properties:
+              content:
+                type: "string"
+                description: "The extracted text content from the webpage. Text is joined with spaces, and hyperlinks are formatted as `<a href=\"url\">text</a>`. Script and style elements are excluded."
+            required:
+              - "content"
+            example:
+              content: "Welcome to Example <a href=\"https://example.com/about\">About Us</a> Contact us at <a href=\"mailto:info@example.com\">info@example.com</a>"
+        "400":
+          description: "Bad request, due to missing URL parameter in both query and body."
+          schema:
+            type: "string"
+            example: "URL parameter is required"
+        "500":
+          description: "Internal server error, possibly due to Puppeteer launch failure, page navigation timeout, or other scraping issues."
+          schema:
+            type: "string"
+            example: "Error: Navigation timeout of 30000 ms exceeded"
+      x-google-backend:
+        address: "https://scrape-page-1156202023.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+  /reinventors/slack-pubsub/v1:
+    post:
+      tags:
+        - "Reinventors"
+      summary: "Events from Slack to PubSub"
+      operationId: "reinventorsSlackPubsubV1"
+      description: "Handles Slack events and forwards them to Google Cloud Pub/Sub topics. The endpoint accepts Slack webhook payloads, verifies URL challenges, skips retries, and processes event callbacks. Supported event types ('file_shared', 'app_mention') are published to specific Pub/Sub topics under 'projects/reinventors/topics', while unknown events are logged but not published. Responses indicate success, retry skips, or errors based on the request type and content."
+      consumes:
+        - "application/json"
+      produces:
+        - "text/plain"
+      parameters:
+        - in: "header"
+          name: "X-Slack-Retry-Num"
+          type: "string"
+          description: "Slack retry header indicating the number of retry attempts. If present, the request is acknowledged but not processed further."
+          required: false
+        - in: "body"
+          name: "body"
+          description: "Slack webhook payload containing event data or URL verification challenge."
+          required: true
+          schema:
+            type: "object"
+            properties:
+              type:
+                type: "string"
+                description: "The type of Slack request: 'url_verification' for handshake, 'event_callback' for events."
+                enum:
+                  - "url_verification"
+                  - "event_callback"
+              challenge:
+                type: "string"
+                description: "Challenge string sent by Slack for URL verification, required if type is 'url_verification'."
+              event:
+                type: "object"
+                description: "Event details, required if type is 'event_callback'."
+                properties:
+                  type:
+                    type: "string"
+                    description: "The specific event type from Slack."
+                    enum:
+                      - "file_shared"
+                      - "app_mention"
+                required:
+                  - "type"
+            required:
+              - "type"
+            example:
+              type: "event_callback"
+              event:
+                type: "file_shared"
+                file_id: "F12345678"
+                channel_id: "C12345678"
+                user_id: "U12345678"
+      responses:
+        "200":
+          description: "Request processed successfully. Returns the challenge for URL verification, a retry acknowledgment, or a Pub/Sub success message."
+          schema:
+            type: "string"
+            description: "Response text varies by request type: challenge string for 'url_verification', 'Message already processed' for retries, or 'Pub/Sub message accepted' for event callbacks."
+            example: "Pub/Sub message accepted"
+        "400":
+          description: "Bad request, due to missing body or unknown request type."
+          schema:
+            type: "string"
+            example: "No body in request"
+        "500":
+          description: "Internal server error, possibly due to Pub/Sub publishing failure."
+          schema:
+            type: "string"
+            example: "Error: Pub/Sub service unavailable"
+      x-google-backend:
+        address: "https://slack-pubsub-1156202023.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+
+
+  /icxi/automated-testing/v1:
+    post:
+      tags:
+        - "ICXI"
+      summary: "Automated Testing"
+      operationId: "icxiAutomatedTestingV1"
+      description: "Executes a specified automated test case and returns the result. The endpoint accepts a test name in the request body and runs one of five predefined tests: 'homeLoginPage', 'newUserPartnerItemPurchaseFromLandingPage', 'loggedOutUserPartnerItemPurchaseFromLandingPage', 'loggedInUserPartnerItemPurchaseFromLandingPage', or 'loggedInUserPartnerItemPurchaseFromHomePage'. Each test returns an object with a 'passed' boolean and a 'message' string. Successful tests (passed: true) return a 200 status, while failed tests (passed: false) or errors return a 500 status."
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Request body containing the name of the test to execute."
+          required: true
+          schema:
+            type: "object"
+            properties:
+              testName:
+                type: "string"
+                description: "The name of the test to run."
+                enum:
+                  - "homeLoginPage"
+                  - "newUserPartnerItemPurchaseFromLandingPage"
+                  - "loggedOutUserPartnerItemPurchaseFromLandingPage"
+                  - "loggedInUserPartnerItemPurchaseFromLandingPage"
+                  - "loggedInUserPartnerItemPurchaseFromHomePage"
+            required:
+              - "testName"
+            example:
+              testName: "homeLoginPage"
+      responses:
+        "200":
+          description: "Test executed successfully and passed. Returns the test result with 'passed' set to true."
+          schema:
+            type: "object"
+            properties:
+              passed:
+                type: "boolean"
+                description: "Indicates whether the test passed."
+                example: true
+              message:
+                type: "string"
+                description: "A message describing the test outcome."
+                example: "Automated testing completed successfully."
+            required:
+              - "passed"
+              - "message"
+        "500":
+          description: "Test failed, an unknown test name was provided, or an internal error occurred. Returns the test result with 'passed' set to false or an error message."
+          schema:
+            type: "object"
+            properties:
+              passed:
+                type: "boolean"
+                description: "Indicates whether the test passed, set to false for failures."
+                example: false
+              message:
+                type: "string"
+                description: "A message describing the test failure or error."
+                example: "Test failed: Login button not found"
+            required:
+              - "passed"
+              - "message"
+            example:
+              passed: false
+              message: "Internal server error: Test homeLoginPage not found"
+      x-google-backend:
+        address: "https://automated-testing-219432459761.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+  /icxi/convert-submission/v1:
+    post:
+      tags:
+        - "ICXI"
+      summary: "Convert Submission"
+      operationId: "icxiConvertSubmissionV1"
+      description: "Converts submission data into either a PDF or HTML report based on the specified type and Navigator_id. The endpoint uses Pug templates ('employee_happiness.pug' or 'customer_experience.pug') to render the data, applies CSS styling via Puppeteer, and generates the output. PDFs are returned directly as a binary attachment with pagination, while HTML files are uploaded to Google Cloud Storage (bucket: 'icxi-files', folder: 'reports') and a signed URL (valid until 2124) is returned. The template defaults to 'employee_happiness.pug' and type to 'pdf' if unspecified or invalid."
+      consumes:
+        - "application/json"
+      produces:
+        - "application/pdf"
+        - "application/json"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Submission data including type, Navigator_id, and additional data for rendering the report."
+          required: true
+          schema:
+            type: "object"
+            properties:
+              type:
+                type: "string"
+                description: "The output format of the report."
+                enum:
+                  - "pdf"
+                  - "html"
+                default: "pdf"
+              Navigator_id:
+                type: "string"
+                description: "Identifier determining the Pug template to use."
+                enum:
+                  - "R35D5TE2"
+                  - "L7TNU46T"
+                default: "R35D5TE2"
+              data:
+                type: "object"
+                description: "Additional data to be passed to the Pug template for rendering."
+                additionalProperties: true
+            required:
+              - "type"
+              - "Navigator_id"
+            example:
+              type: "pdf"
+              Navigator_id: "R35D5TE2"
+              data:
+                title: "Employee Happiness Report"
+                date: "April 7, 2025"
+                scores:
+                  - category: "Work Environment"
+                    value: 85
+      responses:
+        "200":
+          description: "Successfully generated the report. Returns a PDF binary for type 'pdf' or a JSON object with a signed URL for type 'html'."
+          schema:
+            oneOf:
+              - type: "file"
+                description: "Binary PDF content of the report, styled with 'icxi.css' and 'pdf.css', including a footer with page numbers."
+              - type: "object"
+                properties:
+                  url:
+                    type: "string"
+                    description: "Signed URL to access the HTML report stored in Google Cloud Storage, valid until January 1, 2124."
+                required:
+                  - "url"
+                example:
+                  url: "https://storage.googleapis.com/icxi-files/reports/Report_1712539200000.html?X-Goog-Signature=..."
+          headers:
+            Content-Type:
+              type: "string"
+              description: "MIME type of the response: 'application/pdf' for PDF, 'application/json' for HTML."
+              enum:
+                - "application/pdf"
+                - "application/json"
+            Content-Disposition:
+              type: "string"
+              description: "Instructs the client to download the PDF as 'Report.pdf'. Omitted for HTML response."
+              default: "attachment; filename=\"Report.pdf\""
+        "400":
+          description: "Bad request, due to missing request data or invalid type."
+          schema:
+            type: "string"
+            example: "Missing request data"
+        "500":
+          description: "Internal server error, possibly due to issues with Pug rendering, Puppeteer, or Google Cloud Storage."
+          schema:
+            type: "string"
+            example: "An error occurred while generating the file"
+      x-google-backend:
+        address: "https://convert-submission-219432459761.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+  /icxi/process-submission/v1:
+    post:
+      tags:
+        - "ICXI"
+      summary: "Process Submission"
+      operationId: "icxiProcessSubmissionV1"
+      description: "Processes a submission dataset to generate a structured report, including maturity levels, criteria results, recommendations, and an executive summary. The endpoint calculates scores, determines target levels, processes criteria with unit-level answers, generates recommendations using OpenAI (unless regenerating from existing data), and returns a comprehensive result object. It handles Net Promoter Score (NPS) calculations, maps data by IDs, and formats summaries in British English with specific constraints."
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Submission data containing client, navigator, criteria, and answer details for processing."
+          required: true
+          schema:
+            type: "object"
+            properties:
+              ClientNav:
+                type: "object"
+                description: "Client and navigator metadata."
+                properties:
+                  ClientNav_conducted_by:
+                    type: "string"
+                    description: "Person or entity conducting the assessment."
+                  Client_name:
+                    type: "string"
+                    description: "Name of the client."
+                  ClientNavigator_id:
+                    type: "string"
+                    description: "Unique ID of the client navigator."
+                  ClientNav_submitted_at:
+                    type: "string"
+                    description: "Submission date in ISO format."
+                  ClientNavigator_score:
+                    type: "number"
+                    description: "Overall score of the client (0-100)."
+                  SettingsMaturityLevel_name:
+                    type: "string"
+                    description: "Current maturity level name."
+                  Navigator_title:
+                    type: "string"
+                    description: "Title of the navigator."
+                  Navigator_official_title:
+                    type: "string"
+                    description: "Official title of the navigator."
+                  Navigator_id:
+                    type: "string"
+                    description: "Navigator ID."
+                  Navigator_prompt:
+                    type: "string"
+                    description: "Prompt for OpenAI summary generation."
+                  ClientNav_regenerate_report:
+                    type: "boolean"
+                    description: "If true, uses existing summary data instead of generating new ones."
+                  ClientNav_summary:
+                    type: "string"
+                    description: "Existing executive summary (used if regenerating)."
+                required:
+                  - "ClientNavigator_score"
+                  - "SettingsMaturityLevel_name"
+                  - "Navigator_prompt"
+              MaturityLevels:
+                type: "array"
+                description: "List of maturity levels."
+                items:
+                  type: "object"
+                  properties:
+                    SettingsMaturityLevel_name:
+                      type: "string"
+                    SettingsMaturityLevelNavigator_score:
+                      type: "number"
+                    SettingsMaturityLevelNavigator_prompt:
+                      type: "string"
+                  required:
+                    - "SettingsMaturityLevel_name"
+                    - "SettingsMaturityLevelNavigator_score"
+              CriteriaResults:
+                type: "array"
+                description: "List of criteria results."
+                items:
+                  type: "object"
+                  properties:
+                    Criteria_id:
+                      type: "string"
+                    CriteriaResult_id:
+                      type: "string"
+                    CriteriaResult_criteria_answer:
+                      type: "string"
+                    Criteria_title:
+                      type: "string"
+                    Criteria_short_description:
+                      type: "string"
+                    CriteriaResult_score:
+                      type: "number"
+                    NavigatorCriteria_icon:
+                      type: "string"
+                    NavigatorCriteria_prompt:
+                      type: "string"
+                    ClientNavCriteriaResult_summary:
+                      type: "string"
+                      description: "Existing summary (used if regenerating)."
+                  required:
+                    - "Criteria_id"
+                    - "CriteriaResult_score"
+              CriteriaAnswers:
+                type: "array"
+                description: "List of criteria answers in JSON format."
+                items:
+                  type: "object"
+                  properties:
+                    Criteria_id:
+                      type: "string"
+                    CriteriaAnswer_answer:
+                      type: "string"
+                      description: "JSON string of answers (e.g., '[{\"q\": \"q1\", \"a\": \"a1\"}]')."
+                  required:
+                    - "Criteria_id"
+                    - "CriteriaAnswer_answer"
+              CriteriaUnits:
+                type: "array"
+                description: "List of criteria units."
+                items:
+                  type: "object"
+                  properties:
+                    CriteriaUnit_id:
+                      type: "string"
+                    CriteriaUnit_impact:
+                      type: "number"
+                    CriteriaUnit_ease:
+                      type: "number"
+                    NavigatorUnit_type:
+                      type: "string"
+                    Unit_recommendation:
+                      type: "string"
+                    Unit_recommendation_description:
+                      type: "string"
+                  required:
+                    - "CriteriaUnit_id"
+              AnswerOptions:
+                type: "array"
+                description: "List of answer options."
+                items:
+                  type: "object"
+                  properties:
+                    id:
+                      type: "string"
+                    score:
+                      type: "number"
+                    ignore:
+                      type: "boolean"
+                  required:
+                    - "id"
+                    - "score"
+            required:
+              - "ClientNav"
+              - "MaturityLevels"
+              - "CriteriaResults"
+              - "CriteriaAnswers"
+              - "CriteriaUnits"
+              - "AnswerOptions"
+            example:
+              ClientNav:
+                ClientNav_conducted_by: "John Doe"
+                Client_name: "Example Ltd"
+                ClientNavigator_id: "CN123"
+                ClientNav_submitted_at: "2025-04-07T10:00:00Z"
+                ClientNavigator_score: 75
+                SettingsMaturityLevel_name: "Intermediate"
+                Navigator_title: "Employee Survey"
+                Navigator_official_title: "Employee Engagement Assessment"
+                Navigator_id: "N123"
+                Navigator_prompt: "Assess employee engagement."
+                ClientNav_regenerate_report: false
+              MaturityLevels:
+                - SettingsMaturityLevel_name: "Beginner"
+                  SettingsMaturityLevelNavigator_score: 50
+                  SettingsMaturityLevelNavigator_prompt: "Basic processes."
+                - SettingsMaturityLevel_name: "Intermediate"
+                  SettingsMaturityLevelNavigator_score: 75
+                  SettingsMaturityLevelNavigator_prompt: "Stable operations."
+              CriteriaResults:
+                - Criteria_id: "C1"
+                  CriteriaResult_id: "CR1"
+                  CriteriaResult_criteria_answer: "CA1"
+                  Criteria_title: "Team Collaboration"
+                  Criteria_short_description: "Teamwork quality"
+                  CriteriaResult_score: 80
+                  NavigatorCriteria_icon: "team-icon"
+                  NavigatorCriteria_prompt: "Evaluate teamwork."
+              CriteriaAnswers:
+                - Criteria_id: "C1"
+                  CriteriaAnswer_answer: "[{\"q\": \"q1\", \"a\": \"a1\"}]"
+              CriteriaUnits:
+                - CriteriaUnit_id: "q1"
+                  CriteriaUnit_impact: 8
+                  CriteriaUnit_ease: 7
+                  NavigatorUnit_type: "A526PJYV"
+                  Unit_recommendation: "Improve team meetings"
+                  Unit_recommendation_description: "Hold weekly syncs."
+              AnswerOptions:
+                - id: "a1"
+                  score: 0.9
+                  ignore: false
+      responses:
+        "200":
+          description: "Successfully processed the submission and returned the structured report."
+          schema:
+            type: "object"
+            properties:
+              ClientNav_conducted_by:
+                type: "string"
+                description: "Person or entity conducting the assessment."
+              Client_name:
+                type: "string"
+                description: "Name of the client."
+              ClientNav_id:
+                type: "string"
+                description: "Unique ID of the client navigator."
+              ClientNav_submitted_at:
+                type: "string"
+                description: "Submission date in 'DD/MM/YYYY' format."
+              ClientNav_score:
+                type: "number"
+                description: "Overall score of the client (0-100)."
+              ClientNav_nps_score:
+                type: "integer"
+                description: "Net Promoter Score (-100 to 100), calculated from 'A526PJYV' type units."
+              ClientNav_nps_answer_count:
+                type: "integer"
+                description: "Number of responses used for NPS calculation."
+              ClientNav_level:
+                type: "string"
+                description: "Current maturity level name."
+              ClientNav_summary:
+                type: "string"
+                description: "Executive summary in HTML with four <p> tags."
+              Navigator_title:
+                type: "string"
+                description: "Title of the navigator."
+              Navigator_official_title:
+                type: "string"
+                description: "Official title of the navigator."
+              Navigator_id:
+                type: "string"
+                description: "Navigator ID."
+              NavigatorCriteria:
+                type: "array"
+                description: "Processed criteria details."
+                items:
+                  type: "object"
+                  properties:
+                    id:
+                      type: "string"
+                    crid:
+                      type: "string"
+                    caid:
+                      type: "string"
+                    title:
+                      type: "string"
+                    short_description:
+                      type: "string"
+                    score:
+                      type: "number"
+                    level:
+                      type: "string"
+                    target_score:
+                      type: "number"
+                    icon:
+                      type: "string"
+                    recommendation:
+                      type: "string"
+                      description: "HTML list of up to 5 recommendations."
+                    summary:
+                      type: "string"
+                      description: "HTML <p> tag with criterion summary."
+                    units:
+                      type: "array"
+                      items:
+                        type: "object"
+                        properties:
+                          id:
+                            type: "string"
+                          impact:
+                            type: "number"
+                          ease:
+                            type: "number"
+                          type:
+                            type: "string"
+                          recommendation:
+                            type: "string"
+                          recommendation_description:
+                            type: "string"
+                          answers:
+                            type: "array"
+                            items:
+                              type: "string"
+                          average_score:
+                            type: "number"
+                          relevance_score:
+                            type: "number"
+                        required:
+                          - "id"
+                          - "average_score"
+                          - "relevance_score"
+                  required:
+                    - "id"
+                    - "score"
+                    - "level"
+                    - "target_score"
+              MaturityLevels:
+                type: "array"
+                description: "List of maturity levels (unchanged from input)."
+                items:
+                  type: "object"
+                  properties:
+                    SettingsMaturityLevel_name:
+                      type: "string"
+                    SettingsMaturityLevelNavigator_score:
+                      type: "number"
+                    SettingsMaturityLevelNavigator_prompt:
+                      type: "string"
+                  required:
+                    - "SettingsMaturityLevel_name"
+                    - "SettingsMaturityLevelNavigator_score"
+            required:
+              - "ClientNav_conducted_by"
+              - "Client_name"
+              - "ClientNav_id"
+              - "ClientNav_submitted_at"
+              - "ClientNav_score"
+              - "ClientNav_nps_score"
+              - "ClientNav_nps_answer_count"
+              - "ClientNav_level"
+              - "ClientNav_summary"
+              - "Navigator_title"
+              - "Navigator_official_title"
+              - "Navigator_id"
+              - "NavigatorCriteria"
+              - "MaturityLevels"
+            example:
+              ClientNav_conducted_by: "John Doe"
+              Client_name: "Example Ltd"
+              ClientNav_id: "CN123"
+              ClientNav_submitted_at: "07/04/2025"
+              ClientNav_score: 75
+              ClientNav_nps_score: 20
+              ClientNav_nps_answer_count: 10
+              ClientNav_level: "Intermediate"
+              ClientNav_summary: "<p>Example Ltd is at an Intermediate maturity level with a 75% score.</p><p>Strengths include good team collaboration and stable processes.</p><p>Weaknesses are in training, which could improve with more focus.</p><p>The eNPS score of 20 suggests moderate satisfaction, with room to grow.</p>"
+              Navigator_title: "Employee Survey"
+              Navigator_official_title: "Employee Engagement Assessment"
+              Navigator_id: "N123"
+              NavigatorCriteria:
+                - id: "C1"
+                  crid: "CR1"
+                  caid: "CA1"
+                  title: "Team Collaboration"
+                  short_description: "Teamwork quality"
+                  score: 80
+                  level: "Intermediate"
+                  target_score: 100
+                  icon: "team-icon"
+                  recommendation: "<li>Improve team meetings</li>"
+                  summary: "<p>Team Collaboration scored 80%, reaching Intermediate level. It might benefit from better communication tools. Regular meetings could possibly enhance teamwork further.</p>"
+                  units:
+                    - id: "q1"
+                      impact: 8
+                      ease: 7
+                      type: "A526PJYV"
+                      recommendation: "Improve team meetings"
+                      recommendation_description: "Hold weekly syncs."
+                      answers: ["a1"]
+                      average_score: 0.9
+                      relevance_score: 5.6
+              MaturityLevels:
+                - SettingsMaturityLevel_name: "Beginner"
+                  SettingsMaturityLevelNavigator_score: 50
+                  SettingsMaturityLevelNavigator_prompt: "Basic processes."
+                - SettingsMaturityLevel_name: "Intermediate"
+                  SettingsMaturityLevelNavigator_score: 75
+                  SettingsMaturityLevelNavigator_prompt: "Stable operations."
+        "400":
+          description: "Bad request, typically due to malformed or missing input data."
+          schema:
+            type: "string"
+            example: "Invalid request body"
+        "500":
+          description: "Internal server error, possibly due to OpenAI failure or data processing issues."
+          schema:
+            type: "string"
+            example: "Error processing submission"
+      x-google-backend:
+        address: "https://process-submission-219432459761.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+  /icxi/process-respondent-csv/v1:
+    post:
+      tags:
+        - "ICXI"
+      summary: "Process Respondent CSV"
+      operationId: "icxiProcessRespondentCsvV1"
+      description: "Processes a CSV file containing respondent data, validating and mapping it against provided roles and respondent metadata. The endpoint accepts a multipart/form-data request with a CSV file (columns: email, name, role), a JSON string of roles, a JSON string of existing respondents, and a CriteriaResult ID (crid). Each CSV row is validated for structure, email format, uniqueness, and role validity. Successful rows are mapped to a structured output with role IDs, while failed rows are reported with specific error reasons. The response includes arrays of successful and failed rows."
+      consumes:
+        - "multipart/form-data"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "formData"
+          name: "file"
+          type: "file"
+          description: "The CSV file containing respondent data. Expected columns: respondent_email (valid email), respondent_name, respondent_role (must match a role name from the 'roles' data). Rows with fewer than 3 columns are rejected."
+          required: true
+        - in: "formData"
+          name: "roles"
+          type: "string"
+          description: "A JSON string representing an array of role objects, each with 'name' and 'id' properties, wrapped in a 'Result' key. Used to map respondent_role from the CSV to a role ID."
+          required: true
+          example: '{"Result": [{"name": "Manager", "id": "1"}, {"name": "Employee", "id": "2"}]}'
+        - in: "formData"
+          name: "respondents"
+          type: "string"
+          description: "A JSON string representing an array of existing respondent objects, each with a 'respondent_email' property, wrapped in a 'Result' key. Used to check for duplicate emails."
+          required: true
+          example: '{"Result": [{"respondent_email": "existing@example.com"}]}'
+        - in: "formData"
+          name: "crid"
+          type: "string"
+          description: "The CriteriaResult ID to associate with each successfully processed respondent."
+          required: true
+          example: "12345"
+      responses:
+        "200":
+          description: "Successfully processed the CSV file, returning arrays of successful and failed rows with detailed information."
+          schema:
+            type: "object"
+            properties:
+              success_rows:
+                type: "array"
+                description: "Array of successfully processed rows from the CSV, enriched with mapped data."
+                items:
+                  type: "object"
+                  properties:
+                    row:
+                      type: "array"
+                      description: "The original row data from the CSV as an array: [email, name, role]."
+                      items:
+                        type: "string"
+                    criteria_result:
+                      type: "string"
+                      description: "The CriteriaResult ID (crid) provided in the request."
+                    respondent_email:
+                      type: "string"
+                      description: "The validated email address from the CSV row."
+                    respondent_name:
+                      type: "string"
+                      description: "The name from the CSV row."
+                    respondent_role:
+                      type: "string"
+                      description: "The role ID mapped from the role name in the CSV row using the provided roles data."
+                  required:
+                    - "row"
+                    - "criteria_result"
+                    - "respondent_email"
+                    - "respondent_name"
+                    - "respondent_role"
+              failure_rows:
+                type: "array"
+                description: "Array of rows that failed validation, with reasons for failure."
+                items:
+                  type: "object"
+                  properties:
+                    row:
+                      type: "array"
+                      description: "The original row data from the CSV as an array."
+                      items:
+                        type: "string"
+                    error:
+                      type: "string"
+                      description: "The reason for failure."
+                      enum:
+                        - "invalid_structure"
+                        - "invalid_email"
+                        - "duplicate_email"
+                        - "invalid_role"
+                  required:
+                    - "row"
+                    - "error"
+            required:
+              - "success_rows"
+              - "failure_rows"
+            example:
+              success_rows:
+                - row: ["john.doe@example.com", "John Doe", "manager"]
+                  criteria_result: "12345"
+                  respondent_email: "john.doe@example.com"
+                  respondent_name: "John Doe"
+                  respondent_role: "1"
+              failure_rows:
+                - row: ["invalid.email", "Jane Doe", "employee"]
+                  error: "invalid_email"
+                - row: ["duplicate@example.com", "Duplicate User", "manager"]
+                  error: "duplicate_email"
+        "400":
+          description: "Bad request, due to missing or invalid file, roles, respondents, or crid data."
+          schema:
+            type: "string"
+            example: "File not provided or invalid format."
+        "500":
+          description: "Internal server error, due to unexpected issues during processing."
+          schema:
+            type: "string"
+            example: "An error occurred while processing the request."
+      x-google-backend:
+        address: "https://process-respondent-csv-219432459761.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+
+
+  /nostromo/process-invoice/v1:
+    post:
+      tags:
+        - "Nostromo"
+      summary: "Process Invoice"
+      operationId: "nostromoProcessInvoiceV1"
+      description: "Processes an invoice file (image or PDF) using OpenAI to extract structured data according to a specified or default schema. The endpoint accepts a multipart/form-data request with an invoice file and optionally a tool name (to load a default schema) or a custom schema. The file is converted to base64 and analyzed by OpenAI, which returns invoice details such as supplier information, tax breakdown, and totals. The response includes the extracted data, the model used, and execution time. Supported file types are images (e.g., PNG, JPEG) and PDFs."
+      consumes:
+        - "multipart/form-data"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "formData"
+          name: "file"
+          type: "file"
+          description: "The invoice file to process. Supported formats include images (e.g., PNG, JPEG) and PDFs. The file is encoded as base64 and sent to OpenAI for analysis."
+          required: true
+        - in: "formData"
+          name: "tool"
+          type: "string"
+          description: "Optional name of a predefined tool/schema to use for processing (e.g., 'nostromo_invoices'). If provided without a schema, the corresponding JSON schema file is loaded from the server's 'schemas' directory. Either 'tool' or 'schema' must be provided."
+          required: false
+        - in: "formData"
+          name: "schema"
+          type: "string"
+          description: "Optional JSON string defining the schema for OpenAI to structure the output. If provided, it overrides any 'tool' schema. Either 'tool' or 'schema' must be provided. The schema must follow the OpenAI JSON schema format with 'type', 'name', 'schema', and 'strict' properties."
+          required: false
+          example: '{"type": "json_schema", "name": "custom_invoice", "schema": {"type": "object", "properties": {"supplier": {"type": "string"}}, "required": ["supplier"], "additionalProperties": false}, "strict": true}'
+      responses:
+        "200":
+          description: "Successfully processed the invoice file, returning structured invoice data along with metadata about the processing."
+          schema:
+            type: "object"
+            properties:
+              supplier:
+                type: "string"
+                description: "Supplier Name: Extracted from the invoice, excluding organizations with 'Nostromo' in their title (Nostromo is the buyer)."
+              vat_id:
+                type: "string"
+                description: "VAT ID or another unique identifier of the supplier (e.g., CIF, NIF, NIE)."
+              supplier_zip:
+                type: "string"
+                description: "Supplier ZIP (postal code): Extracted from the invoice, excluding Nostromo-related data."
+              supplier_country:
+                type: "string"
+                description: "Supplier country: Extracted in Spanish (e.g., 'España'), excluding Nostromo-related data."
+              supplier_state:
+                type: "string"
+                description: "Supplier State: Extracted from the invoice, excluding Nostromo-related data."
+              supplier_city:
+                type: "string"
+                description: "Supplier City: Extracted from the invoice, excluding Nostromo-related data."
+              supplier_street:
+                type: "string"
+                description: "Supplier Street without building number: Extracted from the invoice, excluding Nostromo-related data."
+              supplier_building:
+                type: "string"
+                description: "Supplier Building Number: May be blank if not found, excluding Nostromo-related data."
+              supplier_floor:
+                type: "string"
+                description: "Supplier Floor: May be blank if not found, excluding Nostromo-related data."
+              supplier_letter:
+                type: "string"
+                description: "Supplier Building Letter: May be blank if not found, excluding Nostromo-related data."
+              supplier_phone_landline:
+                type: "string"
+                description: "Supplier Landline Phone Number: May be blank if not found, excluding Nostromo-related data."
+              supplier_phone_mobile:
+                type: "string"
+                description: "Supplier Mobile Phone Number: May be blank if not found, excluding Nostromo-related data."
+              supplier_email:
+                type: "string"
+                description: "Supplier Email Address: May be blank if not found, excluding Nostromo-related data."
+              bank_name:
+                type: "string"
+                description: "Bank Name: May be blank if not found, excluding Nostromo-related data."
+              bank_account:
+                type: "string"
+                description: "Bank Account: May be blank if not found, excluding Nostromo-related data."
+              swift_code:
+                type: "string"
+                description: "SWIFT Code: May be blank if not found, excluding Nostromo-related data."
+              number:
+                type: "string"
+                description: "Invoice Number."
+              date:
+                type: "string"
+                description: "Invoice Date in 'YYYY-MM-DD' format (e.g., '2024-12-25')."
+              currency:
+                type: "string"
+                description: "Invoice Currency (e.g., 'EUR', 'USD', 'GBP')."
+              service_description:
+                type: "string"
+                description: "Description of the invoice products or services."
+              invoice_taxBreakdown:
+                type: "array"
+                description: "Invoice lines aggregated by tax rates, excluding IRPF tax. If tax is not mentioned, defaults to 0.00."
+                items:
+                  type: "object"
+                  properties:
+                    tax_rate:
+                      type: "number"
+                      description: "Tax rate as a decimal fraction (e.g., 0.21 for 21%). Defaults to 0.00 if not specified."
+                    amount_net:
+                      type: "number"
+                      description: "Net amount before tax."
+                    due_date:
+                      type: "string"
+                      description: "Payment due date in 'YYYY-MM-DD' format. Uses invoice date if not specified."
+                    amount_tax:
+                      type: "number"
+                      description: "Tax amount. Defaults to 0.00 if not specified."
+                    amount_gross:
+                      type: "number"
+                      description: "Gross amount including tax. Equals amount_net if tax is not specified."
+                  required:
+                    - "tax_rate"
+                    - "amount_net"
+                    - "due_date"
+                    - "amount_tax"
+                    - "amount_gross"
+              irpf:
+                type: "number"
+                description: "IRPF Amount."
+              irpf_rate:
+                type: "number"
+                description: "Rate of IRPF."
+              invoice_amount:
+                type: "number"
+                description: "Total amount of the invoice to be paid, including all taxes."
+              execution_time:
+                type: "number"
+                description: "Time taken to process the request, in seconds, rounded to 1 decimal place."
+              model:
+                type: "string"
+                description: "The OpenAI model used for processing (e.g., value from OPENAI_MODEL environment variable)."
+            required:
+              - "supplier"
+              - "vat_id"
+              - "supplier_zip"
+              - "supplier_country"
+              - "supplier_state"
+              - "supplier_city"
+              - "supplier_street"
+              - "supplier_building"
+              - "supplier_floor"
+              - "supplier_letter"
+              - "supplier_phone_landline"
+              - "supplier_phone_mobile"
+              - "supplier_email"
+              - "bank_name"
+              - "bank_account"
+              - "swift_code"
+              - "number"
+              - "date"
+              - "currency"
+              - "service_description"
+              - "invoice_taxBreakdown"
+              - "irpf"
+              - "irpf_rate"
+              - "invoice_amount"
+              - "execution_time"
+              - "model"
+            example:
+              supplier: "Acme Corp"
+              vat_id: "ESB12345678"
+              supplier_zip: "28001"
+              supplier_country: "España"
+              supplier_state: "Madrid"
+              supplier_city: "Madrid"
+              supplier_street: "Calle Principal"
+              supplier_building: "10"
+              supplier_floor: ""
+              supplier_letter: ""
+              supplier_phone_landline: "+34 91 123 4567"
+              supplier_phone_mobile: ""
+              supplier_email: "contact@acmecorp.es"
+              bank_name: "Banco Santander"
+              bank_account: "ES9121000418450200051332"
+              swift_code: "BSCHESMM"
+              number: "INV-2024-001"
+              date: "2024-12-25"
+              currency: "EUR"
+              service_description: "Consulting services for Q4 2024"
+              invoice_taxBreakdown:
+                - tax_rate: 0.21
+                  amount_net: 1000.00
+                  due_date: "2025-01-24"
+                  amount_tax: 210.00
+                  amount_gross: 1210.00
+              irpf: 0.00
+              irpf_rate: 0.00
+              invoice_amount: 1210.00
+              execution_time: 2.3
+              model: "gpt-4-turbo"
+        "400":
+          description: "Bad request, due to missing file or both tool and schema being absent."
+          schema:
+            type: "object"
+            properties:
+              error:
+                type: "string"
+            example:
+              error: "No file provided"
+        "500":
+          description: "Internal server error, possibly due to OpenAI API issues or file processing failures."
+          schema:
+            type: "object"
+            properties:
+              error:
+                type: "string"
+            example:
+              error: "Internal processing error"
+      x-google-backend:
+        address: "https://process-invoice-505066843821.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+
+
+
+  /star-liquors/process-dbf/v1:
+    post:
+      tags:
+        - "Star Liquors"
+      summary: "Process DBF"
+      operationId: "starLiquorsProcessDbfV1"
+      description: "Processes a DBF file (optionally with a memo file) containing store data, uploads it to Google Cloud Storage, and updates a database based on the file type ('barcode' or 'liqcode'). The endpoint accepts a multipart/form-data request with a DBF file, an optional memo file (e.g., .dbt), a file type, and an API key for store authentication. The DBF data is parsed, compared against existing records in a Cloud SQL database, and either inserted or updated in batches. A signed URL for the uploaded file is returned, and an email notification is sent with processing results or errors."
+      consumes:
+        - "multipart/form-data"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "formData"
+          name: "file"
+          type: "file"
+          description: "The DBF file to process. Must have a .dbf extension. Contains store data (e.g., barcodes or liquor codes) depending on the 'type' parameter."
+          required: true
+        - in: "formData"
+          name: "memo_file"
+          type: "file"
+          description: "Optional memo file (e.g., .dbt) associated with the DBF file, providing additional data if required by the DBF format."
+          required: false
+        - in: "formData"
+          name: "type"
+          type: "string"
+          description: "The type of DBF file being processed, determining the database table and fields to update."
+          enum:
+            - "barcode"
+            - "liqcode"
+          required: true
+        - in: "header"
+          name: "x-api-key"
+          type: "string"
+          description: "API key used to authenticate the store. Must match a token in the 'store_token' table to retrieve the store_id."
+          required: true
+      responses:
+        "200":
+          description: "Successfully processed the DBF file, uploaded it to Google Cloud Storage, and updated the database. Returns a signed URL for the uploaded file."
+          schema:
+            type: "object"
+            properties:
+              message:
+                type: "string"
+                description: "Confirmation message indicating successful processing."
+              url:
+                type: "string"
+                description: "Signed URL for accessing the uploaded DBF file in Google Cloud Storage, valid for 100 years."
+            required:
+              - "message"
+            example:
+              message: "DBF file processed successfully"
+              url: "https://storage.googleapis.com/bucket/folder/2025-04-07_12-00-00.dbf?signature=..."
+        "400":
+          description: "Bad request, due to missing file, invalid file format, or missing required parameters."
+          schema:
+            type: "object"
+            properties:
+              error:
+                type: "string"
+                description: "Error message explaining the failure."
+            required:
+              - "error"
+            example:
+              error: "Invalid file format. Please upload a DBF file"
+        "401":
+          description: "Unauthorized, due to an invalid or missing API key."
+          schema:
+            type: "object"
+            properties:
+              error:
+                type: "string"
+                description: "Error message indicating authentication failure."
+            required:
+              - "error"
+            example:
+              error: "Invalid token"
+        "500":
+          description: "Internal server error, due to issues processing the DBF file, database operations, or uploading to storage."
+          schema:
+            type: "object"
+            properties:
+              error:
+                type: "string"
+                description: "Error message detailing the failure."
+            required:
+              - "error"
+            example:
+              error: "Error processing DBF file: database connection failed"
+      x-google-backend:
+        address: "https://process-dbf-853602167746.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+
+
+  /mercy/process-report/v1:
+    post:
+      tags:
+        - "Mercy"
+      summary: "Process Report"
+      operationId: "mercyProcessReportV1"
+      description: "Processes a JSON report containing sections with questions and answers in Ukrainian (UK), translating answers to English (EN) using DeepL, and generating plain text and HTML outputs for both languages. The endpoint accepts a JSON body with nested sections, each containing questions with labels, types (e.g., 'singleSelect'), choices, and answers. Answers are translated from Ukrainian to English, and the output is formatted as concatenated strings (plain text and HTML) for each language, with section titles and question labels included. The process preserves the original Ukrainian answers and adds translated English versions."
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "The JSON report data containing sections with questions and answers to process and translate."
+          required: true
+          schema:
+            type: "object"
+            properties:
+              sections:
+                type: "object"
+                description: "A dictionary of section names mapped to section details."
+                additionalProperties:
+                  type: "object"
+                  properties:
+                    title:
+                      type: "object"
+                      properties:
+                        en:
+                          type: "string"
+                          description: "English title of the section."
+                        uk:
+                          type: "string"
+                          description: "Ukrainian title of the section."
+                      required: ["en", "uk"]
+                    questions:
+                      type: "object"
+                      description: "A dictionary of question keys mapped to question details."
+                      additionalProperties:
+                        type: "object"
+                        properties:
+                          label:
+                            type: "object"
+                            properties:
+                              en:
+                                type: "string"
+                                description: "English label of the question."
+                              uk:
+                                type: "string"
+                                description: "Ukrainian label of the question."
+                            required: ["en", "uk"]
+                          type:
+                            type: "string"
+                            description: "The type of question, affecting how the answer is processed."
+                            enum: ["singleSelect", "text"]
+                          choices:
+                            type: "array"
+                            description: "Array of choice objects for 'singleSelect' questions. Optional for other types."
+                            items:
+                              type: "object"
+                              properties:
+                                en:
+                                  type: "string"
+                                  description: "English text of the choice."
+                                uk:
+                                  type: "string"
+                                  description: "Ukrainian text of the choice."
+                              required: ["en", "uk"]
+                          answer:
+                            type: ["string", "integer"]
+                            description: "The answer to the question. For 'singleSelect', an integer index into 'choices'. For 'text', a string in Ukrainian to be translated."
+                        required: ["label", "type"]
+            required: ["sections"]
+            example:
+              sections:
+                section1:
+                  title:
+                    en: "Personal Info"
+                    uk: "Особиста інформація"
+                  questions:
+                    q1:
+                      label:
+                        en: "What is your name?"
+                        uk: "Як вас звати?"
+                      type: "text"
+                      answer: "Іван"
+                    q2:
+                      label:
+                        en: "Select your role"
+                        uk: "Оберіть вашу роль"
+                      type: "singleSelect"
+                      choices:
+                        - en: "Manager"
+                          uk: "Менеджер"
+                        - en: "Employee"
+                          uk: "Працівник"
+                      answer: 1
+      responses:
+        "200":
+          description: "Successfully processed the report, returning plain text and HTML outputs for both English and Ukrainian."
+          schema:
+            type: "object"
+            properties:
+              outputPlainEN:
+                type: "string"
+                description: "Plain text output in English, with section titles in uppercase followed by question labels and translated answers, separated by newlines."
+              outputPlainUK:
+                type: "string"
+                description: "Plain text output in Ukrainian, with section titles in uppercase followed by question labels and original answers, separated by newlines."
+              outputHtmlEN:
+                type: "string"
+                description: "HTML output in English, with section titles in <strong> tags, followed by question labels in <strong> tags and translated answers, separated by <br> tags."
+              outputHtmlUK:
+                type: "string"
+                description: "HTML output in Ukrainian, with section titles in <strong> tags, followed by question labels in <strong> tags and original answers, separated by <br> tags."
+            required:
+              - "outputPlainEN"
+              - "outputPlainUK"
+              - "outputHtmlEN"
+              - "outputHtmlUK"
+            example:
+              outputPlainEN: |
+                PERSONAL INFO
+                What is your name?
+                Ivan
+                Select your role?
+                Employee
+                
+              outputPlainUK: |
+                ОСОБИСТА ІНФОРМАЦІЯ
+                Як вас звати?
+                Іван
+                Оберіть вашу роль?
+                Працівник
+                
+              outputHtmlEN: "<br><strong>PERSONAL INFO</strong><br><strong>What is your name?</strong><br>Ivan<br><strong>Select your role?</strong><br>Employee<br>"
+              outputHtmlUK: "<br><strong>ОСОБИСТА ІНФОРМАЦІЯ</strong><br><strong>Як вас звати?</strong><br>Іван<br><strong>Оберіть вашу роль?</strong><br>Працівник<br>"
+        "400":
+          description: "Bad request, due to invalid JSON body."
+          schema:
+            type: "object"
+            properties:
+              message:
+                type: "string"
+            example:
+              message: "Please provide a valid JSON body"
+        "500":
+          description: "Internal server error, due to issues with DeepL translation or processing."
+          schema:
+            type: "object"
+            properties:
+              error:
+                type: "string"
+              error_stack:
+                type: "string"
+            example:
+              error: "Translation service unavailable"
+              error_stack: "Traceback (most recent call last):\n  File..."
+      x-google-backend:
+        address: "https://process-report-1006470024942.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
+  
+  /mercy/prepare-form-for-word-document/v1:
+    post:
+      tags:
+        - "Mercy"
+      summary: "Prepare form for Word document"
+      description: |
+        This endpoint processes structured questionnaire data to generate a formatted template suitable for inclusion in a Word document.
+
+        The request body must include the full questionnaire structure with references to the starting section and the order of questions within each section. 
+        The API will traverse the sections and questions in order, compile the responses, and format them into a simplified array of objects containing section titles, 
+        question texts, and answers. It handles different answer types including text and single-select responses.
+
+        The resulting structure can be used to populate Word document templates in a readable and structured manner.
+      operationId: "mercyPrepareFormForWordDocumentV1"
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      parameters:
+        - in: "body"
+          name: "questionnaireData"
+          required: true
+          schema:
+            type: "object"
+            required:
+              - startSection
+              - sections
+            properties:
+              startSection:
+                type: "string"
+                description: "Key of the first section to begin processing from"
+              sections:
+                type: "object"
+                additionalProperties:
+                  type: "object"
+                  required:
+                    - title
+                    - startQuestion
+                    - questions
+                  properties:
+                    title:
+                      type: "object"
+                      properties:
+                        uk:
+                          type: "string"
+                          description: "Ukrainian title of the section"
+                    startQuestion:
+                      type: "string"
+                      description: "Key of the first question in this section"
+                    nextSection:
+                      type: "string"
+                      description: "Key of the next section to process (or null to end)"
+                    questions:
+                      type: "object"
+                      additionalProperties:
+                        type: "object"
+                        required:
+                          - label
+                          - type
+                        properties:
+                          label:
+                            type: "object"
+                            properties:
+                              uk:
+                                type: "string"
+                                description: "Ukrainian text of the question"
+                          type:
+                            type: "string"
+                            enum: ["text", "singleSelect"]
+                            description: "Type of the question"
+                          answer:
+                            description: "The answer given; either a string or a 0-based index (for singleSelect)"
+                          choices:
+                            type: "array"
+                            items:
+                              type: "object"
+                              properties:
+                                uk:
+                                  type: "string"
+                                  description: "Ukrainian text of the choice"
+                          nextQuestion:
+                            type: "string"
+                            description: "Key of the next question (or null to end)"
+      responses:
+        "200":
+          description: "A structured list of sections containing formatted questions and answers"
+          schema:
+            type: "object"
+            properties:
+              sections:
+                type: "array"
+                items:
+                  type: "object"
+                  properties:
+                    title:
+                      type: "string"
+                      description: "Section title, only set for the first question in the section"
+                    question:
+                      type: "string"
+                      description: "Formatted question with numbering"
+                    answer:
+                      type: "string"
+                      description: "Formatted answer text or selected choice"
+      x-google-backend:
+        address: "https://prepare-form-for-word-document-1006470024942.europe-west1.run.app"
+        path_translation: "CONSTANT_ADDRESS"
+        deadline: 120.0
